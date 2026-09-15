@@ -2,6 +2,8 @@
 
 Staff Record is a digital staff book for shops, wholesalers, and other employers. It keeps employee records, wages, attendance, advances, responsibilities, and tasks in one simple desktop-and-mobile system.
 
+The current MVP includes email-code sign-in, business onboarding, employee records, daily attendance, advances, tasks, automatic wage calculations, deductions, advance recovery, payment status, and printable pay records.
+
 Official domain: [staffrecords.net](https://staffrecords.net)
 
 ## Local setup

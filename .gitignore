@@ -20,6 +20,9 @@
 .wrangler
 dist
 
+# supabase cli
+supabase/.temp/
+
 # misc
 .DS_Store
 *.pem

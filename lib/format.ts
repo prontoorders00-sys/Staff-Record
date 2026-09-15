@@ -13,3 +13,20 @@ export function prettyDate(value: string) {
 export function initials(name: string) {
   return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
+
+export function hoursAndMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (!hours) return `${minutes}m`;
+  if (!minutes) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+export function wageTypeLabel(value: string) {
+  return ({
+    monthly_salary: "Monthly salary",
+    weekly_salary: "Weekly salary",
+    daily_rate: "Daily rate",
+    hourly_rate: "Hourly rate",
+  } as Record<string, string>)[value] ?? value.replaceAll("_", " ");
+}

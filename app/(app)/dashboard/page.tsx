@@ -45,6 +45,7 @@ export default async function DashboardPage() {
           <div className="panel-heading"><div><span className="eyebrow">Shortcuts</span><h2>Quick actions</h2></div></div>
           <Link href="/employees"><span className="quick-icon">+</span><div><strong>Add an employee</strong><small>Record their role and wage</small></div><b>→</b></Link>
           <Link href="/advances"><span className="quick-icon">R</span><div><strong>Record an advance</strong><small>Keep a clear money trail</small></div><b>→</b></Link>
+          <Link href="/payroll"><span className="quick-icon">R</span><div><strong>Prepare employee pay</strong><small>Calculate wages and deductions</small></div><b>→</b></Link>
           <Link href="/attendance"><span className="quick-icon">✓</span><div><strong>Mark today’s register</strong><small>Present, absent, sick or leave</small></div><b>→</b></Link>
         </div>
       </section>

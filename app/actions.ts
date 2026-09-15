@@ -9,6 +9,20 @@ function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
+function moneyValue(formData: FormData, key: string) {
+  const raw = textValue(formData, key);
+  if (!raw) return 0;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 99999999.99) {
+    throw new Error("Enter valid money amounts.");
+  }
+  return Math.round(value * 100) / 100;
+}
+
+function validDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00Z`));
+}
+
 export async function createBusiness(formData: FormData) {
   const name = textValue(formData, "businessName");
   const fullName = textValue(formData, "ownerName");
@@ -107,6 +121,152 @@ export async function addAdvance(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   await logEvent("advance", employeeId, "created", { amount });
+  revalidatePath("/advances");
+  revalidatePath("/dashboard");
+}
+
+export async function createPayRun(formData: FormData) {
+  const workspace = await getWorkspace();
+  if (workspace.role === "employee") throw new Error("You do not have permission to prepare pay records.");
+
+  const employeeId = textValue(formData, "employeeId");
+  const periodStart = textValue(formData, "periodStart");
+  const periodEnd = textValue(formData, "periodEnd");
+  const payDate = textValue(formData, "payDate");
+  const grossOverrideRaw = textValue(formData, "grossOverride");
+  const extraPay = moneyValue(formData, "extraPay");
+  const deductionAmount = moneyValue(formData, "deductionAmount");
+  const advanceRepayment = moneyValue(formData, "advanceRepayment");
+  const deductionReason = textValue(formData, "deductionReason");
+  const paymentMethod = textValue(formData, "paymentMethod");
+  const note = textValue(formData, "note");
+
+  if (!employeeId || !validDate(periodStart) || !validDate(periodEnd) || !validDate(payDate)) {
+    throw new Error("Choose an employee and valid pay-period dates.");
+  }
+  const periodDays = Math.round((Date.parse(`${periodEnd}T12:00:00Z`) - Date.parse(`${periodStart}T12:00:00Z`)) / 86400000);
+  if (periodDays < 0 || periodDays > 92) throw new Error("The pay period must be between 1 and 93 days.");
+  if (deductionAmount > 0 && deductionReason.length < 2) throw new Error("Add a reason for the deduction.");
+  if (paymentMethod && (paymentMethod.length < 2 || paymentMethod.length > 80)) throw new Error("Enter a valid payment method.");
+  if (note.length > 1000) throw new Error("Keep the pay note under 1,000 characters.");
+
+  const supabase = await createClient();
+  const { data: employee, error: employeeError } = await supabase
+    .from("employees")
+    .select("id,wage_type,wage_rate")
+    .eq("id", employeeId)
+    .eq("business_id", workspace.businessId)
+    .eq("active", true)
+    .maybeSingle();
+  if (employeeError) throw new Error(employeeError.message);
+  if (!employee) throw new Error("Active employee not found.");
+
+  const [attendanceResult, advancesResult] = await Promise.all([
+    supabase
+      .from("attendance_entries")
+      .select("status,clock_in_at,clock_out_at,break_minutes,overtime_minutes")
+      .eq("business_id", workspace.businessId)
+      .eq("employee_id", employeeId)
+      .gte("work_date", periodStart)
+      .lte("work_date", periodEnd),
+    supabase
+      .from("advances")
+      .select("amount,repaid_amount")
+      .eq("business_id", workspace.businessId)
+      .eq("employee_id", employeeId)
+      .in("status", ["open", "partially_repaid"]),
+  ]);
+  if (attendanceResult.error) throw new Error(attendanceResult.error.message);
+  if (advancesResult.error) throw new Error(advancesResult.error.message);
+
+  const attendance = attendanceResult.data ?? [];
+  const workedDays = attendance.filter((entry) => entry.status === "present").length;
+  const workedMinutes = attendance.reduce((total, entry) => {
+    if (entry.status !== "present" || !entry.clock_in_at || !entry.clock_out_at) return total;
+    const elapsed = Math.max(0, Math.round((Date.parse(entry.clock_out_at) - Date.parse(entry.clock_in_at)) / 60000));
+    return total + Math.max(0, elapsed - Number(entry.break_minutes ?? 0) + Number(entry.overtime_minutes ?? 0));
+  }, 0);
+  const wageRate = Number(employee.wage_rate);
+  let grossPay = employee.wage_type === "daily_rate"
+    ? wageRate * workedDays
+    : employee.wage_type === "hourly_rate"
+      ? wageRate * workedMinutes / 60
+      : wageRate;
+
+  if (grossOverrideRaw) {
+    grossPay = moneyValue(formData, "grossOverride");
+  }
+  grossPay = Math.round(grossPay * 100) / 100;
+
+  const outstandingAdvance = (advancesResult.data ?? []).reduce(
+    (total, advance) => total + Number(advance.amount) - Number(advance.repaid_amount),
+    0,
+  );
+  if (advanceRepayment > outstandingAdvance + 0.005) {
+    throw new Error("Advance recovery is higher than the employee's outstanding balance.");
+  }
+  if (deductionAmount + advanceRepayment > grossPay + extraPay) {
+    throw new Error("Deductions cannot be more than the employee's pay.");
+  }
+
+  const { data: payRun, error } = await supabase
+    .from("pay_runs")
+    .insert({
+      business_id: workspace.businessId,
+      employee_id: employeeId,
+      period_start: periodStart,
+      period_end: periodEnd,
+      pay_date: payDate,
+      wage_type: employee.wage_type,
+      wage_rate: wageRate,
+      worked_days: workedDays,
+      worked_minutes: workedMinutes,
+      gross_pay: grossPay,
+      extra_pay: extraPay,
+      deduction_amount: deductionAmount,
+      deduction_reason: deductionAmount ? deductionReason : null,
+      advance_repayment: advanceRepayment,
+      payment_method: paymentMethod || null,
+      note: note || null,
+      created_by: workspace.userId,
+    })
+    .select("id")
+    .single();
+  if (error?.code === "23505") throw new Error("A pay record already exists for this employee and period.");
+  if (error) throw new Error(error.message);
+
+  await logEvent("pay_run", payRun.id, "created", { employee_id: employeeId, period_start: periodStart, period_end: periodEnd, gross_pay: grossPay });
+  revalidatePath("/payroll");
+  revalidatePath("/dashboard");
+}
+
+export async function markPayRunPaid(formData: FormData) {
+  const workspace = await getWorkspace();
+  if (workspace.role === "employee") throw new Error("You do not have permission to mark payroll as paid.");
+  const payRunId = textValue(formData, "payRunId");
+  if (!payRunId) throw new Error("Pay record not found.");
+
+  const supabase = await createClient();
+  const { data: payRun } = await supabase
+    .from("pay_runs")
+    .select("id")
+    .eq("id", payRunId)
+    .eq("business_id", workspace.businessId)
+    .maybeSingle();
+  if (!payRun) throw new Error("Pay record not found.");
+
+  const { data: paidRun, error } = await supabase
+    .from("pay_runs")
+    .update({ status: "paid" })
+    .eq("id", payRun.id)
+    .eq("business_id", workspace.businessId)
+    .eq("status", "draft")
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!paidRun) throw new Error("Only a draft pay record can be marked paid.");
+  revalidatePath("/payroll");
+  revalidatePath(`/payroll/${payRun.id}`);
   revalidatePath("/advances");
   revalidatePath("/dashboard");
 }

@@ -6,6 +6,7 @@ const nav = [
   ["/dashboard", "Overview", "▦"],
   ["/employees", "Employees", "◉"],
   ["/attendance", "Attendance", "✓"],
+  ["/payroll", "Payroll", "R"],
   ["/advances", "Advances", "R"],
   ["/tasks", "Tasks", "□"],
 ] as const;
@@ -27,7 +28,7 @@ export function AppShell({ workspace, children }: { workspace: Workspace; childr
       <div className="app-main">
         <header className="mobile-header"><Link className="logo" href="/dashboard"><span>SR</span><strong>Staff Record</strong></Link><span>{workspace.businessName}</span></header>
         {children}
-        <nav className="mobile-nav">{nav.slice(0, 5).map(([href, label, icon]) => <Link key={href} href={href}><b>{icon}</b><span>{label}</span></Link>)}</nav>
+        <nav className="mobile-nav">{nav.map(([href, label, icon]) => <Link key={href} href={href}><b>{icon}</b><span>{label}</span></Link>)}</nav>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ export async function updateSession(request: NextRequest) {
   const protectedRoute = request.nextUrl.pathname.startsWith("/dashboard") ||
     request.nextUrl.pathname.startsWith("/employees") ||
     request.nextUrl.pathname.startsWith("/attendance") ||
+    request.nextUrl.pathname.startsWith("/payroll") ||
     request.nextUrl.pathname.startsWith("/advances") ||
     request.nextUrl.pathname.startsWith("/tasks") ||
     request.nextUrl.pathname.startsWith("/settings") ||

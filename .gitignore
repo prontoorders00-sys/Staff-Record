@@ -11,6 +11,7 @@
 # local environment files
 .env*
 !.env.example
+!.env.production
 
 # vercel
 .vercel

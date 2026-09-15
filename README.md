@@ -15,8 +15,11 @@ The database schema and RLS policies are managed in the linked Supabase project.
 
 ## Cloudflare Workers
 
-The application keeps its standard Next.js workflow and includes an additional vinext build for Cloudflare Workers:
+The default production workflow targets Cloudflare Workers:
 
-- `npm run build:vinext` builds the Worker-compatible production output.
+- `npm run build` builds the Worker-compatible production output with vinext.
+- `npx wrangler deploy` deploys the built output and attaches `staffrecords.net` and `www.staffrecords.net`.
 - `npm run start:vinext` runs the built Worker locally.
-- `npm run deploy:vinext` deploys the built output through Wrangler.
+- `npm run build:next` is available when a standard Next.js production build is needed for verification.
+
+The committed production environment file contains only Supabase's public browser configuration. Never add a Supabase secret or service-role key to a `NEXT_PUBLIC_*` variable or commit it to this repository.

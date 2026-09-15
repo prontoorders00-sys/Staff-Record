@@ -1,4 +1,6 @@
 :root {
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
   --ink: #17352f;
   --forest: #143c35;
   --forest-2: #1d5248;
@@ -14,7 +16,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--cream); }
-body { margin: 0; color: var(--ink); background: var(--cream); font-family: var(--font-sans), Arial, sans-serif; }
+body { margin: 0; color: var(--ink); background: var(--cream); font-family: var(--font-sans); }
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }

@@ -1,0 +1,34 @@
+create schema if not exists private;
+create or replace function public.set_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end; $$;
+create or replace function private.is_business_member(target_business_id uuid) returns boolean language sql stable security definer set search_path = public as $$ select exists (select 1 from public.business_memberships where business_id = target_business_id and user_id = auth.uid()); $$;
+create or replace function private.is_business_manager(target_business_id uuid) returns boolean language sql stable security definer set search_path = public as $$ select exists (select 1 from public.business_memberships where business_id = target_business_id and user_id = auth.uid() and role in ('owner', 'manager')); $$;
+
+drop policy "businesses: members can read" on public.businesses;
+drop policy "memberships: members can read" on public.business_memberships;
+drop policy "memberships: owner can add or self can add" on public.business_memberships;
+drop policy "memberships: owner can update" on public.business_memberships;
+drop policy "employees: members can read" on public.employees;
+drop policy "employees: managers can manage" on public.employees;
+drop policy "attendance: members can read" on public.attendance_entries;
+drop policy "attendance: managers can manage" on public.attendance_entries;
+drop policy "advances: managers can read" on public.advances;
+drop policy "advances: managers can manage" on public.advances;
+drop policy "tasks: members can read" on public.tasks;
+drop policy "tasks: managers can manage" on public.tasks;
+drop policy "audit: managers can read" on public.audit_events;
+drop policy "audit: managers can write" on public.audit_events;
+
+create policy "businesses: members can read" on public.businesses for select using (private.is_business_member(id));
+create policy "memberships: members can read" on public.business_memberships for select using (private.is_business_member(business_id));
+create policy "memberships: owner can add or self can add" on public.business_memberships for insert to authenticated with check (user_id = auth.uid() or private.is_business_manager(business_id));
+create policy "memberships: owner can update" on public.business_memberships for update using (private.is_business_manager(business_id)) with check (private.is_business_manager(business_id));
+create policy "employees: members can read" on public.employees for select using (private.is_business_member(business_id));
+create policy "employees: managers can manage" on public.employees for all using (private.is_business_manager(business_id)) with check (private.is_business_manager(business_id));
+create policy "attendance: members can read" on public.attendance_entries for select using (private.is_business_member(business_id));
+create policy "attendance: managers can manage" on public.attendance_entries for all using (private.is_business_manager(business_id)) with check (private.is_business_manager(business_id));
+create policy "advances: managers can read" on public.advances for select using (private.is_business_manager(business_id));
+create policy "advances: managers can manage" on public.advances for all using (private.is_business_manager(business_id)) with check (private.is_business_manager(business_id));
+create policy "tasks: members can read" on public.tasks for select using (private.is_business_member(business_id));
+create policy "tasks: managers can manage" on public.tasks for all using (private.is_business_manager(business_id)) with check (private.is_business_manager(business_id));
+create policy "audit: managers can read" on public.audit_events for select using (private.is_business_manager(business_id));
+create policy "audit: managers can write" on public.audit_events for insert with check (private.is_business_manager(business_id));

@@ -42,9 +42,6 @@ export async function createBusiness(formData: FormData) {
     .single();
   if (businessError) throw new Error(businessError.message);
 
-  const { error: membershipError } = await supabase.from("business_memberships").insert({ business_id: business.id, user_id: user.id, role: "owner" });
-  if (membershipError) throw new Error(membershipError.message);
-
   await supabase.from("profiles").upsert({ id: user.id, full_name: fullName });
   redirect("/dashboard");
 }
@@ -153,13 +150,29 @@ export async function createPayRun(formData: FormData) {
   const supabase = await createClient();
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("id,wage_type,wage_rate")
+    .select("id,wage_type,wage_rate,pay_frequency")
     .eq("id", employeeId)
     .eq("business_id", workspace.businessId)
     .eq("active", true)
     .maybeSingle();
   if (employeeError) throw new Error(employeeError.message);
   if (!employee) throw new Error("Active employee not found.");
+
+  const inclusivePeriodDays = periodDays + 1;
+  if (employee.pay_frequency === "weekly" && inclusivePeriodDays !== 7) {
+    throw new Error("This employee is paid weekly. Choose an exact 7-day period.");
+  }
+  if (employee.pay_frequency === "fortnightly" && inclusivePeriodDays !== 14) {
+    throw new Error("This employee is paid fortnightly. Choose an exact 14-day period.");
+  }
+  if (employee.pay_frequency === "monthly") {
+    const start = new Date(`${periodStart}T12:00:00Z`);
+    const expectedStart = `${periodStart.slice(0, 8)}01`;
+    const expectedEnd = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+    if (periodStart !== expectedStart || periodEnd !== expectedEnd) {
+      throw new Error("This employee is paid monthly. Choose one complete calendar month.");
+    }
+  }
 
   const [attendanceResult, advancesResult] = await Promise.all([
     supabase
@@ -219,6 +232,7 @@ export async function createPayRun(formData: FormData) {
       pay_date: payDate,
       wage_type: employee.wage_type,
       wage_rate: wageRate,
+      pay_frequency: employee.pay_frequency,
       worked_days: workedDays,
       worked_minutes: workedMinutes,
       gross_pay: grossPay,
@@ -233,6 +247,7 @@ export async function createPayRun(formData: FormData) {
     .select("id")
     .single();
   if (error?.code === "23505") throw new Error("A pay record already exists for this employee and period.");
+  if (error?.code === "23P01") throw new Error("This pay period overlaps another active pay record for the employee.");
   if (error) throw new Error(error.message);
 
   await logEvent("pay_run", payRun.id, "created", { employee_id: employeeId, period_start: periodStart, period_end: periodEnd, gross_pay: grossPay });

@@ -49,6 +49,8 @@ export default async function PayrollPage() {
   const paidTotal = paidRuns.reduce((total, run) => total + Number(run.net_pay), 0);
   const date = today();
   const monthStart = `${date.slice(0, 8)}01`;
+  const currentMonth = new Date(`${monthStart}T12:00:00Z`);
+  const monthEnd = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
 
   return (
     <main className="page-content">
@@ -128,12 +130,12 @@ export default async function PayrollPage() {
             </label>
             <div className="form-grid">
               <label>Period starts<input name="periodStart" type="date" defaultValue={monthStart} required /></label>
-              <label>Period ends<input name="periodEnd" type="date" defaultValue={date} required /></label>
+              <label>Period ends<input name="periodEnd" type="date" defaultValue={monthEnd} required /></label>
             </div>
             <label>Pay date<input name="payDate" type="date" defaultValue={date} required /></label>
             <div className="calculation-box">
               <strong>Automatic wage calculation</strong>
-              <span>Fixed salaries use the saved wage. Daily and hourly workers use attendance recorded inside this period.</span>
+              <span>Use an exact 7-day, 14-day, or complete calendar-month period based on the employee’s pay frequency. Daily and hourly workers use attendance inside that period.</span>
             </div>
             <label>Gross pay override (optional)<input name="grossOverride" type="number" min="0" max="99999999.99" step="0.01" placeholder="Leave blank to calculate automatically" /></label>
             <div className="form-grid">

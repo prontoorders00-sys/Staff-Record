@@ -30,3 +30,13 @@ export function wageTypeLabel(value: string) {
     hourly_rate: "Hourly rate",
   } as Record<string, string>)[value] ?? value.replaceAll("_", " ");
 }
+
+export function attendanceTime(value: string | null | undefined) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Johannesburg",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
+}

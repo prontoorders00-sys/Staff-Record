@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { recordAttendance } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
-import { initials, prettyDate, today } from "@/lib/format";
+import { attendanceTime, initials, prettyDate, today } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 
@@ -28,7 +28,7 @@ export default async function AttendancePage() {
           return <form action={recordAttendance} className="attendance-row" key={employee.id}>
             <input type="hidden" name="employeeId" value={employee.id} /><input type="hidden" name="workDate" value={date} />
             <div className="person-cell"><span className="avatar">{initials(employee.full_name)}</span><p><strong>{employee.full_name}</strong><small>{employee.job_title || "Employee"}</small></p></div>
-            <div className="attendance-fields"><select name="status" defaultValue={mark?.status ?? "present"}><option value="present">Present</option><option value="absent">Absent</option><option value="sick">Sick</option><option value="leave">On leave</option><option value="pending_review">Review later</option></select><input aria-label="Clock in" name="clockIn" type="time" defaultValue={mark?.clock_in_at?.slice(11, 16) ?? ""} /><input aria-label="Clock out" name="clockOut" type="time" defaultValue={mark?.clock_out_at?.slice(11, 16) ?? ""} /><input aria-label="Break minutes" name="breakMinutes" type="number" min="0" defaultValue={mark?.break_minutes ?? 0} /></div>
+            <div className="attendance-fields"><select name="status" defaultValue={mark?.status ?? "present"}><option value="present">Present</option><option value="absent">Absent</option><option value="sick">Sick</option><option value="leave">On leave</option><option value="pending_review">Review later</option></select><input aria-label="Clock in" name="clockIn" type="time" defaultValue={attendanceTime(mark?.clock_in_at)} /><input aria-label="Clock out" name="clockOut" type="time" defaultValue={attendanceTime(mark?.clock_out_at)} /><input aria-label="Break minutes" name="breakMinutes" type="number" min="0" defaultValue={mark?.break_minutes ?? 0} /></div>
             <SubmitButton className="button button-small" pendingLabel="…">{mark ? "Update" : "Mark"}</SubmitButton>
           </form>;
         }) : <div className="empty"><span>✓</span><strong>No employees to mark</strong><p>Add active employees first.</p></div>}

@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
+import { today } from "@/lib/format";
+import { validDate, validateWage, validateAttendance, calculatePay } from "@/lib/pay-rules";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -17,10 +19,6 @@ function moneyValue(formData: FormData, key: string) {
     throw new Error("Enter valid money amounts.");
   }
   return Math.round(value * 100) / 100;
-}
-
-function validDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00Z`));
 }
 
 export async function createBusiness(formData: FormData) {
@@ -50,7 +48,9 @@ export async function addEmployee(formData: FormData) {
   const workspace = await getWorkspace();
   if (workspace.role === "employee") throw new Error("You do not have permission to add employees.");
   const fullName = textValue(formData, "fullName");
-  const wageRate = Number(textValue(formData, "wageRate"));
+  const wageRate = moneyValue(formData, "wageRate");
+  validateWage(textValue(formData, "wageType"), textValue(formData, "payFrequency"));
+  if (!textValue(formData, "wageRate") || !validDate(textValue(formData, "startDate"))) throw new Error("Enter a wage and valid start date.");
   if (fullName.length < 2 || !Number.isFinite(wageRate) || wageRate < 0) throw new Error("Enter a valid name and wage.");
   const supabase = await createClient();
   const { error } = await supabase.from("employees").insert({
@@ -65,7 +65,6 @@ export async function addEmployee(formData: FormData) {
     start_date: textValue(formData, "startDate"),
   });
   if (error) throw new Error(error.message);
-  await logEvent("employee", null, "created", { full_name: fullName });
   revalidatePath("/employees");
   revalidatePath("/dashboard");
 }
@@ -78,9 +77,17 @@ export async function recordAttendance(formData: FormData) {
   const status = textValue(formData, "status");
   const clockIn = textValue(formData, "clockIn");
   const clockOut = textValue(formData, "clockOut");
+  if (!validDate(workDate) || workDate > today()) throw new Error("Choose today or an earlier attendance date.");
+  const breakMinutes = Number(textValue(formData, "breakMinutes") || 0);
+  const overtimeMinutes = Number(textValue(formData, "overtimeMinutes") || 0);
+  const sickHours = Number(textValue(formData, "sickHours") || 0);
+  if (!Number.isFinite(sickHours) || sickHours < 0 || sickHours > 24) throw new Error("Sick hours must be between 0 and 24.");
+  const sickMinutes = Math.round(sickHours * 60);
+  validateAttendance({ status, clockIn, clockOut, breakMinutes, overtimeMinutes, sickMinutes });
   const supabase = await createClient();
-  const { data: employee } = await supabase.from("employees").select("id").eq("id", employeeId).eq("business_id", workspace.businessId).maybeSingle();
+  const { data: employee } = await supabase.from("employees").select("id,start_date,end_date").eq("id", employeeId).eq("business_id", workspace.businessId).maybeSingle();
   if (!employee) throw new Error("Employee not found.");
+  if (workDate < employee.start_date || (employee.end_date && workDate > employee.end_date)) throw new Error("Choose a date within the employee's employment dates.");
   const payload = {
     business_id: workspace.businessId,
     employee_id: employeeId,
@@ -88,13 +95,14 @@ export async function recordAttendance(formData: FormData) {
     status,
     clock_in_at: clockIn ? `${workDate}T${clockIn}:00+02:00` : null,
     clock_out_at: clockOut ? `${workDate}T${clockOut}:00+02:00` : null,
-    break_minutes: Number(textValue(formData, "breakMinutes") || 0),
+    break_minutes: breakMinutes,
+    overtime_minutes: overtimeMinutes,
+    sick_minutes: sickMinutes,
     note: textValue(formData, "note") || null,
     created_by: workspace.userId,
   };
   const { error } = await supabase.from("attendance_entries").upsert(payload, { onConflict: "employee_id,work_date" });
   if (error) throw new Error(error.message);
-  await logEvent("attendance", employeeId, "recorded", { work_date: workDate, status });
   revalidatePath("/attendance");
   revalidatePath("/dashboard");
 }
@@ -177,7 +185,7 @@ export async function createPayRun(formData: FormData) {
   const [attendanceResult, advancesResult] = await Promise.all([
     supabase
       .from("attendance_entries")
-      .select("status,clock_in_at,clock_out_at,break_minutes,overtime_minutes")
+      .select("status,clock_in_at,clock_out_at,break_minutes,overtime_minutes,sick_minutes")
       .eq("business_id", workspace.businessId)
       .eq("employee_id", employeeId)
       .gte("work_date", periodStart)
@@ -193,18 +201,10 @@ export async function createPayRun(formData: FormData) {
   if (advancesResult.error) throw new Error(advancesResult.error.message);
 
   const attendance = attendanceResult.data ?? [];
-  const workedDays = attendance.filter((entry) => entry.status === "present").length;
-  const workedMinutes = attendance.reduce((total, entry) => {
-    if (entry.status !== "present" || !entry.clock_in_at || !entry.clock_out_at) return total;
-    const elapsed = Math.max(0, Math.round((Date.parse(entry.clock_out_at) - Date.parse(entry.clock_in_at)) / 60000));
-    return total + Math.max(0, elapsed - Number(entry.break_minutes ?? 0) + Number(entry.overtime_minutes ?? 0));
-  }, 0);
-  const wageRate = Number(employee.wage_rate);
-  let grossPay = employee.wage_type === "daily_rate"
-    ? wageRate * workedDays
-    : employee.wage_type === "hourly_rate"
-      ? wageRate * workedMinutes / 60
-      : wageRate;
+  const { workedDays, workedMinutes, overtimeMinutes, sickMinutes, grossPay: calculatedGross } = calculatePay(
+    employee.wage_type, employee.pay_frequency, Number(employee.wage_rate), attendance,
+  );
+  let grossPay = calculatedGross;
 
   if (grossOverrideRaw) {
     grossPay = moneyValue(formData, "grossOverride");
@@ -231,10 +231,12 @@ export async function createPayRun(formData: FormData) {
       period_end: periodEnd,
       pay_date: payDate,
       wage_type: employee.wage_type,
-      wage_rate: wageRate,
+      wage_rate: Number(employee.wage_rate),
       pay_frequency: employee.pay_frequency,
       worked_days: workedDays,
       worked_minutes: workedMinutes,
+      overtime_minutes: overtimeMinutes,
+      sick_minutes: sickMinutes,
       gross_pay: grossPay,
       extra_pay: extraPay,
       deduction_amount: deductionAmount,
@@ -333,3 +335,64 @@ async function logEvent(entityType: string, entityId: string | null, action: str
   const supabase = await createClient();
   await supabase.from("audit_events").insert({ business_id: workspace.businessId, actor_user_id: workspace.userId, entity_type: entityType, entity_id: entityId, action, details });
 }
+
+export async function updateEmployee(formData: FormData) {
+  const workspace = await getWorkspace();
+  if (workspace.role === "employee") throw new Error("Manager access required.");
+  const id = textValue(formData, "employeeId");
+  const fullName = textValue(formData, "fullName");
+  const startDate = textValue(formData, "startDate");
+  const wageType = textValue(formData, "wageType");
+  const payFrequency = textValue(formData, "payFrequency");
+  validateWage(wageType, payFrequency);
+  if (fullName.length < 2 || fullName.length > 120 || !validDate(startDate) || !textValue(formData, "wageRate")) throw new Error("Enter a valid name, wage and start date.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("employees").update({
+    full_name: fullName, phone: textValue(formData, "phone") || null,
+    job_title: textValue(formData, "jobTitle") || null, responsibilities: textValue(formData, "responsibilities") || null,
+    start_date: startDate, wage_type: wageType, pay_frequency: payFrequency, wage_rate: moneyValue(formData, "wageRate"),
+  }).eq("id", id).eq("business_id", workspace.businessId).select("id").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Employee not found.");
+  revalidatePath("/employees"); revalidatePath("/payroll"); revalidatePath("/attendance"); revalidatePath("/dashboard");
+}
+
+export async function setEmployeeActive(formData: FormData) {
+  const workspace = await getWorkspace();
+  if (workspace.role === "employee") throw new Error("Manager access required.");
+  const active = textValue(formData, "active") === "true";
+  const endDate = active ? null : textValue(formData, "endDate");
+  if (!active && (!endDate || !validDate(endDate) || endDate > today())) throw new Error("Choose a valid leaving date, no later than today.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("employees").update({ active, end_date: endDate })
+    .eq("id", textValue(formData, "employeeId")).eq("business_id", workspace.businessId).select("id").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Employee not found.");
+  revalidatePath("/employees"); revalidatePath("/attendance"); revalidatePath("/dashboard"); revalidatePath("/payroll");
+}
+
+export async function cancelPayRun(formData: FormData) {
+  const workspace = await getWorkspace();
+  if (workspace.role === "employee") throw new Error("Manager access required.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("pay_runs").update({ status: "cancelled" })
+    .eq("id", textValue(formData, "payRunId")).eq("business_id", workspace.businessId).eq("status", "draft").select("id").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Only a draft can be cancelled.");
+  revalidatePath("/payroll"); revalidatePath("/attendance"); revalidatePath(`/payroll/${data.id}`); revalidatePath("/dashboard");
+}
+
+async function formResult(action: (data: FormData) => Promise<void>, data: FormData, success: string) {
+  try { await action(data); return { success }; }
+  catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof Error ? error.message : "Unable to save. Please try again." };
+  }
+}
+export async function saveNewEmployee(data: FormData) { return formResult(addEmployee, data, "Employee added."); }
+export async function saveEmployee(data: FormData) { return formResult(updateEmployee, data, "Employee updated."); }
+export async function saveEmployeeStatus(data: FormData) { return formResult(setEmployeeActive, data, "Employee status updated. Previous records are preserved."); }
+export async function saveAttendance(data: FormData) { return formResult(recordAttendance, data, "Attendance saved."); }
+export async function preparePay(data: FormData) { return formResult(createPayRun, data, "Draft pay record prepared. Review it before marking paid."); }
+export async function confirmPay(data: FormData) { return formResult(markPayRunPaid, data, "Payment recorded."); }
+export async function cancelDraftPay(data: FormData) { return formResult(cancelPayRun, data, "Draft cancelled. You can correct attendance and prepare a replacement."); }

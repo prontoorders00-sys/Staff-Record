@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createPayRun, markPayRunPaid } from "@/app/actions";
+import { preparePay, confirmPay, cancelDraftPay } from "@/app/actions";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
@@ -34,6 +35,7 @@ export default async function PayrollPage() {
       .limit(50),
   ]);
 
+  if (employeesResult.error || advancesResult.error || payRunsResult.error) throw new Error("Unable to load payroll. Please try again.");
   const employees = employeesResult.data ?? [];
   const payRuns = payRunsResult.data ?? [];
   const advanceByEmployee = new Map<string, number>();
@@ -93,8 +95,12 @@ export default async function PayrollPage() {
                     <div className="pay-run-total"><small>Net pay</small><strong>{money(run.net_pay)}</strong></div>
                     <div className="pay-run-actions">
                       <Link className="button button-secondary button-small" href={`/payroll/${run.id}`}>View record</Link>
+                      {run.status === "draft" && <ActionForm action={cancelDraftPay}>
+                        <input type="hidden" name="payRunId" value={run.id} />
+                        <ConfirmSubmitButton className="button button-secondary button-small" confirmation="Cancel this draft? No payment or advance recovery will be recorded.">Cancel draft</ConfirmSubmitButton>
+                      </ActionForm>}
                       {run.status === "draft" && (
-                        <form action={markPayRunPaid}>
+                        <ActionForm action={confirmPay}>
                           <input type="hidden" name="payRunId" value={run.id} />
                           <ConfirmSubmitButton
                             className="button button-small"
@@ -103,7 +109,7 @@ export default async function PayrollPage() {
                           >
                             Mark paid
                           </ConfirmSubmitButton>
-                        </form>
+                        </ActionForm>
                       )}
                     </div>
                   </article>
@@ -117,7 +123,7 @@ export default async function PayrollPage() {
 
         <aside className="panel form-panel payroll-form-panel">
           <div className="panel-heading"><div><span className="eyebrow">New calculation</span><h2>Prepare employee pay</h2></div></div>
-          <form action={createPayRun} className="stack-form">
+          <ActionForm action={preparePay} className="stack-form">
             <label>
               Employee
               <select name="employeeId" required defaultValue="">
@@ -135,7 +141,7 @@ export default async function PayrollPage() {
             <label>Pay date<input name="payDate" type="date" defaultValue={date} required /></label>
             <div className="calculation-box">
               <strong>Automatic wage calculation</strong>
-              <span>Use an exact 7-day, 14-day, or complete calendar-month period based on the employee’s pay frequency. Daily and hourly workers use attendance inside that period.</span>
+              <span>Use an exact 7-day, 14-day, or complete calendar-month period based on the employee’s pay frequency. Daily and hourly workers use attendance inside that period. Overtime is already part of clocked hours; enter only the additional premium as Extra pay. Sick hours do not automatically add pay.</span>
             </div>
             <label>Gross pay override (optional)<input name="grossOverride" type="number" min="0" max="99999999.99" step="0.01" placeholder="Leave blank to calculate automatically" /></label>
             <div className="form-grid">
@@ -148,7 +154,7 @@ export default async function PayrollPage() {
             <label>Pay note<textarea name="note" rows={3} maxLength={1000} placeholder="Optional agreement or payment reference" /></label>
             <div className="info-box"><strong>Draft first, confirm second.</strong><span>Advance balances change only when you mark the pay record as paid.</span></div>
             <SubmitButton className="button button-primary button-full" pendingLabel="Calculating…">Prepare pay record</SubmitButton>
-          </form>
+          </ActionForm>
         </aside>
       </section>
     </main>

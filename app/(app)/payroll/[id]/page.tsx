@@ -35,12 +35,12 @@ export default async function PayRecordPage({ params }: { params: Promise<{ id: 
         </header>
 
         <section className="pay-record-heading">
-          <div><small>BUSINESS</small><h1>{workspace.businessName}</h1></div>
+          <div><small>BUSINESS</small><h1>{payRun.business_name ?? workspace.businessName}</h1></div>
           <div><small>PAY DATE</small><strong>{prettyDate(payRun.pay_date)}</strong></div>
         </section>
 
         <section className="pay-record-person">
-          <div><small>EMPLOYEE</small><strong>{employee?.full_name ?? "Employee"}</strong><span>{employee?.job_title || "Employee"}</span></div>
+          <div><small>EMPLOYEE</small><strong>{payRun.employee_name ?? employee?.full_name ?? "Employee"}</strong><span>{payRun.employee_job_title ?? employee?.job_title ?? "Employee"}</span></div>
           <div><small>PAY PERIOD</small><strong>{prettyDate(payRun.period_start)} – {prettyDate(payRun.period_end)}</strong></div>
           <div><small>WAGE BASIS</small><strong>{wageTypeLabel(payRun.wage_type)} · {money(payRun.wage_rate)}</strong></div>
         </section>
@@ -55,8 +55,9 @@ export default async function PayRecordPage({ params }: { params: Promise<{ id: 
 
         <section className="pay-record-meta">
           <div><small>ATTENDANCE USED</small><strong>{payRun.worked_days} present day{payRun.worked_days === 1 ? "" : "s"} · {hoursAndMinutes(payRun.worked_minutes)}</strong></div>
+          <div><small>OVERTIME / SICK HOURS</small><strong>{hoursAndMinutes(payRun.overtime_minutes ?? 0)} overtime · {hoursAndMinutes(payRun.sick_minutes ?? 0)} sick</strong></div>
           <div><small>PAYMENT METHOD</small><strong>{payRun.payment_method || "Not recorded"}</strong></div>
-          <div><small>PAYMENT STATUS</small><strong>{payRun.paid_at ? `Paid ${new Date(payRun.paid_at).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" })}` : "Awaiting payment"}</strong></div>
+          <div><small>PAYMENT STATUS</small><strong>{payRun.paid_at ? `Paid ${new Date(payRun.paid_at).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" })}` : payRun.status === "cancelled" ? "Cancelled — no payment recorded" : "Awaiting payment"}</strong></div>
         </section>
 
         {payRun.note && <section className="pay-record-note"><small>NOTE</small><p>{payRun.note}</p></section>}

@@ -4,12 +4,12 @@ import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { money, prettyDate, today } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
+import { getManagerWorkspace } from "@/lib/workspace";
 
 export const metadata: Metadata = { title: "Advances" };
 
 export default async function AdvancesPage() {
-  const workspace = await getWorkspace();
+  const workspace = await getManagerWorkspace();
   const supabase = await createClient();
   const [employeesResult, advancesResult] = await Promise.all([
     supabase.from("employees").select("id,full_name").eq("business_id", workspace.businessId).eq("active", true).order("full_name"),

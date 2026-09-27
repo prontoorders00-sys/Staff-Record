@@ -4,13 +4,13 @@ import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/print-button";
 import { hoursAndMinutes, money, prettyDate, wageTypeLabel } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
+import { getManagerWorkspace } from "@/lib/workspace";
 
 export const metadata: Metadata = { title: "Pay record" };
 
 export default async function PayRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const workspace = await getWorkspace();
+  const workspace = await getManagerWorkspace();
   const supabase = await createClient();
   const { data: payRun } = await supabase
     .from("pay_runs")

@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
-import { getWorkspace } from "@/lib/workspace";
+import { getManagerWorkspace } from "@/lib/workspace";
 import { createClient } from "@/lib/supabase/server";
 import { money, today } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Overview" };
 
 export default async function DashboardPage() {
-  const workspace = await getWorkspace();
+  const workspace = await getManagerWorkspace();
   const supabase = await createClient();
   const date = today();
   const [employeesResult, attendanceResult, advancesResult, tasksResult] = await Promise.all([

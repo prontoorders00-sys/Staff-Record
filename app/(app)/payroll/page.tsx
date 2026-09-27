@@ -7,12 +7,12 @@ import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { hoursAndMinutes, money, prettyDate, today, wageTypeLabel } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
+import { getManagerWorkspace } from "@/lib/workspace";
 
 export const metadata: Metadata = { title: "Payroll" };
 
 export default async function PayrollPage() {
-  const workspace = await getWorkspace();
+  const workspace = await getManagerWorkspace();
   const supabase = await createClient();
   const [employeesResult, advancesResult, payRunsResult] = await Promise.all([
     supabase

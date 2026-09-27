@@ -203,3 +203,20 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
   .attendance-card { padding: 16px; }
   .attendance-inputs input, .attendance-inputs select { font-size: 16px; }
 }
+
+/* Timed responsibilities and employee inbox. */
+.task-card { align-items: flex-start; }
+.task-card-main { width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.task-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.task-card small { display: block; margin: 6px 0; }
+.task-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-top: 14px; }
+.task-actions details { flex-basis: 100%; }
+.task-actions summary { cursor: pointer; padding: 10px 0; }
+.task-overdue { background: #fee2e2; color: #991b1b; }
+.task-notifications { margin-bottom: 18px; }
+.task-notifications .info-box p { margin: 8px 0; }
+.task-alert { padding: 18px; border: 2px solid #0f766e; border-radius: 12px; margin: 12px 0; background: #f0fdfa; }
+.task-alert a { text-decoration: underline; }
+.task-inbox { max-width: 900px; }
+.task-card.done { opacity: 1; }
+@media (max-width: 600px) { .task-card-heading { flex-wrap: wrap; } .task-actions .button { min-height: 44px; } }

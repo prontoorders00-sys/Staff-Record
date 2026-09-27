@@ -39,3 +39,15 @@ Run `npm test`, `npm run typecheck`, and `npm run build` for application checks.
 `tests/database/staff-workflows.sql` exercises onboarding, isolation, attendance, draft cancellation, payment, advance recovery, and audit protection with the authenticated role. Run it against a database with all migrations applied; its synthetic data is rolled back.
 
 The real email-code login and browser payment/printing walkthrough still need to pass before launch. Unit/database checks do not replace that walkthrough.
+
+## Timed employee tasks
+
+Managers open **Tasks**, select one employee, enter their own duration in minutes/hours/days, and send. The database calculates the deadline from send time and snapshots the sender's name/role. Employees can acknowledge, start, report a problem, and complete tasks. Completed tasks and deadlines are preserved with audit events; the manager sees overdue and late completion status.
+
+Under **Employee inbox access**, the manager records the worker's email. The worker signs in using the usual verified email code. This grants task-only access, not business membership. No invitation email is automatically sent. Removing the email or deactivating the employee revokes access and excludes their devices from subsequent pushes.
+
+The worker opens **My tasks → Enable phone alerts**. iOS/iPadOS users must install the site on their Home Screen first. The `/task-sw.js` service worker handles background Web Push. Supabase `task-notify` independently verifies the caller with `auth.getUser()`, checks task ownership and age, filters recipients against current access, and deduplicates sends. Gateway JWT verification is disabled because the handler validates current users itself (compatible with asymmetric auth signing keys). Only supported Apple, Google and Mozilla HTTPS push endpoints are contacted.
+
+VAPID keys are stored in `private.task_push_config`, never in source or browser configuration. Generate a P-256 VAPID pair once when setting up a new environment; do not rotate an existing pair without re-enrolling devices. Deploy `supabase/functions/task-notify/index.ts` separately from the web app. The inbox remains the source of truth if an OS blocks an alert or delivery fails; the manager receives delivery feedback after sending. Sign-out removes that user's registered phone-alert subscriptions.
+
+Checks: `tests/database/timed-tasks.sql` covers authenticated manager/employee authorization, durations, responses, audited completion, secret access and revocation, rolling all fixtures back. Device delivery requires a real subscribed browser and notification permission.

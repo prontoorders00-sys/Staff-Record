@@ -7,11 +7,11 @@ import { SubmitButton } from "@/components/submit-button";
 import { attendanceTime, initials, prettyDate, today } from "@/lib/format";
 import { validDate } from "@/lib/pay-rules";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
+import { getManagerWorkspace } from "@/lib/workspace";
 
 export const metadata: Metadata = { title: "Attendance" };
 export default async function AttendancePage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
-  const workspace = await getWorkspace();
+  const workspace = await getManagerWorkspace();
   const supabase = await createClient();
   const requested = (await searchParams).date;
   const date = typeof requested === "string" && validDate(requested) && requested <= today() ? requested : today();

@@ -7,11 +7,11 @@ import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { money, initials, today } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
+import { getManagerWorkspace } from "@/lib/workspace";
 
 export const metadata: Metadata = { title: "Employees" };
 export default async function EmployeesPage() {
-  const workspace = await getWorkspace();
+  const workspace = await getManagerWorkspace();
   const supabase = await createClient();
   const { data: employees, error } = await supabase.from("employees").select("*").eq("business_id", workspace.businessId).order("active", { ascending: false }).order("full_name");
   if (error) throw new Error("Unable to load employees. Please try again.");

@@ -20,7 +20,12 @@ export async function getWorkspace(): Promise<Workspace> {
     .limit(1)
     .maybeSingle();
 
-  if (!membership) redirect("/onboarding");
+  if (!membership) {
+    const { data, error } = await supabase.rpc("get_task_workspace");
+    if (error) throw new Error("Unable to load your workspace. Please try again.");
+    if (data) return data as Workspace;
+    redirect("/onboarding");
+  }
 
   const business = Array.isArray(membership.businesses)
     ? membership.businesses[0]
@@ -54,4 +59,10 @@ export async function getOptionalWorkspace(): Promise<Workspace | null> {
     role: membership.role,
     userId: user.id,
   };
+}
+
+export async function getManagerWorkspace(): Promise<Workspace> {
+  const workspace = await getWorkspace();
+  if (workspace.role === "employee") redirect("/tasks");
+  return workspace;
 }

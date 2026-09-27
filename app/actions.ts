@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
+import { taskMinutes } from "@/lib/task-rules";
 import { today } from "@/lib/format";
 import { validDate, validateWage, validateAttendance, calculatePay } from "@/lib/pay-rules";
 
@@ -290,42 +291,64 @@ export async function markPayRunPaid(formData: FormData) {
 
 export async function addTask(formData: FormData) {
   const workspace = await getWorkspace();
-  if (workspace.role === "employee") throw new Error("You do not have permission to assign tasks.");
+  if (workspace.role === "employee") throw new Error("Manager access required.");
   const title = textValue(formData, "title");
-  if (title.length < 2) throw new Error("Enter a task title.");
-  const employeeId = textValue(formData, "employeeId") || null;
+  if (title.length < 2 || title.length > 160) throw new Error("Enter a task title (2–160 characters).");
+  const employeeId = textValue(formData, "employeeId");
+  if (!employeeId) throw new Error("Choose an employee.");
+  const duration = taskMinutes(textValue(formData, "duration"), textValue(formData, "unit"));
   const supabase = await createClient();
-  if (employeeId) {
-    const { data: employee } = await supabase.from("employees").select("id").eq("id", employeeId).eq("business_id", workspace.businessId).maybeSingle();
-    if (!employee) throw new Error("Employee not found.");
-  }
-  const due = textValue(formData, "dueAt");
-  const { error } = await supabase.from("tasks").insert({
-    business_id: workspace.businessId,
-    employee_id: employeeId,
-    title,
-    description: textValue(formData, "description") || null,
-    due_at: due ? new Date(due).toISOString() : null,
-    created_by: workspace.userId,
-  });
+  const { data: task, error } = await supabase.from("tasks").insert({
+    business_id: workspace.businessId, employee_id: employeeId, title,
+    description: textValue(formData, "description").slice(0, 2000) || null,
+    duration_minutes: duration, created_by: workspace.userId,
+  }).select("id").single();
   if (error) throw new Error(error.message);
-  await logEvent("task", employeeId, "created", { title });
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
+  let delivery = "Task saved in the employee's inbox.";
+  try {
+    const { data, error: notifyError } = await supabase.functions.invoke("task-notify", { body: { taskId: task.id } });
+    delivery += notifyError ? " Phone alert could not be sent." : data?.sent > 0 ? " Phone notification sent." : ` ${data?.reason ?? "Employee has not enabled phone notifications."}`;
+  } catch { delivery += " Phone alert could not be sent."; }
+  revalidatePath("/tasks"); revalidatePath("/dashboard");
+  return delivery;
 }
 
-export async function completeTask(formData: FormData) {
-  const workspace = await getWorkspace();
-  const taskId = textValue(formData, "taskId");
+export async function respondTask(formData: FormData) {
+  await getWorkspace();
   const supabase = await createClient();
-  const { error } = await supabase.from("tasks").update({ completed_at: new Date().toISOString() }).eq("id", taskId).eq("business_id", workspace.businessId);
+  const { error } = await supabase.rpc("respond_to_task", {
+    target_task: textValue(formData, "taskId"), response: textValue(formData, "response"),
+    note: textValue(formData, "note") || null,
+  });
   if (error) throw new Error(error.message);
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
+  revalidatePath("/tasks"); revalidatePath("/dashboard");
 }
+
+export async function saveTaskAccess(formData: FormData) {
+  return formResult(async (data) => {
+    const workspace = await getWorkspace();
+    if (workspace.role === "employee") throw new Error("Manager access required.");
+    const supabase = await createClient();
+    const employeeId = textValue(data, "employeeId");
+    const email = textValue(data, "email").toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter the employee's email address.");
+    const result = email
+      ? await supabase.from("task_employee_access").upsert({ employee_id: employeeId, business_id: workspace.businessId, email })
+      : await supabase.from("task_employee_access").delete().eq("employee_id", employeeId).eq("business_id", workspace.businessId);
+    if (result.error) throw new Error(result.error.code === "23505" ? "That email is already linked to another employee." : result.error.message);
+    revalidatePath("/tasks");
+  }, formData, "Task access saved. The employee can sign in with this email at staffrecords.net.");
+}
+export async function saveTask(data: FormData) {
+  try { return { success: await addTask(data) }; }
+  catch (error) { unstable_rethrow(error); return { error: error instanceof Error ? error.message : "Unable to send task." }; }
+}
+export async function saveTaskResponse(data: FormData) { return formResult(respondTask, data, "Task updated."); }
 
 export async function signOut() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) await supabase.from("task_push_subscriptions").delete().eq("user_id", user.id);
   await supabase.auth.signOut();
   redirect("/login");
 }

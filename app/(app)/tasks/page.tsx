@@ -16,7 +16,7 @@ export default async function TasksPage() {
   const supabase = await createClient();
   const [employeesResult, tasksResult, accessResult] = await Promise.all([
     supabase.from("employees").select("id,full_name,user_id").eq("business_id", workspace.businessId).eq("active", true).order("full_name"),
-    supabase.from("tasks").select("id,employee_id,title,description,due_at,created_at,completed_at,started_at,seen_at,problem_note,duration_minutes,assigned_by_name,assigned_by_role,employees(full_name)").eq("business_id", workspace.businessId).order("created_at", { ascending: false }),
+    supabase.from("tasks").select("id,employee_id,title,description,due_at,created_at,completed_at,started_at,seen_at,problem_note,duration_minutes,assigned_by_name,assigned_by_role,employees!tasks_employee_business_fk(full_name)").eq("business_id", workspace.businessId).order("created_at", { ascending: false }),
     canManage ? supabase.from("task_employee_access").select("employee_id,email").eq("business_id", workspace.businessId) : Promise.resolve({data: [], error: null}),
   ]);
   if (employeesResult.error || tasksResult.error || accessResult.error) throw new Error("Unable to load tasks. Please try again.");

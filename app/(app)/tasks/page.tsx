@@ -52,7 +52,7 @@ export default async function TasksPage() {
           </article>;
         })}</div> : <div className="empty"><strong>No tasks yet</strong><p>{canManage ? "Assign the first responsibility using the form." : "New tasks from your manager will appear here automatically."}</p></div>}
       </div>
-      {canManage && <aside className="stack-form">
+      {canManage && <aside className="stack-form task-sidebar">
         <section className="panel form-panel"><div className="panel-heading"><h2>Give a task</h2></div>
           <ActionForm action={saveTask} className="stack-form">
             <label>What must be done?<input name="title" minLength={2} maxLength={160} required placeholder="e.g. Pack the sugar shelves" /></label>

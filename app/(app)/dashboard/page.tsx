@@ -15,7 +15,7 @@ export default async function DashboardPage() {
     supabase.from("employees").select("id", { count: "exact" }).eq("business_id", workspace.businessId).eq("active", true),
     supabase.from("attendance_entries").select("status").eq("business_id", workspace.businessId).eq("work_date", date),
     supabase.from("advances").select("amount,repaid_amount").eq("business_id", workspace.businessId).in("status", ["open", "partially_repaid"]),
-    supabase.from("tasks").select("id,title,due_at,employees(full_name)").eq("business_id", workspace.businessId).is("completed_at", null).order("due_at", { ascending: true }).limit(5),
+    supabase.from("tasks").select("id,title,due_at,employees!tasks_employee_business_fk(full_name)").eq("business_id", workspace.businessId).is("completed_at", null).order("due_at", { ascending: true }).limit(5),
   ]);
   const staffCount = employeesResult.count ?? 0;
   const attendance = attendanceResult.data ?? [];
@@ -36,7 +36,7 @@ export default async function DashboardPage() {
       <section className="dashboard-grid">
         <div className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Action list</span><h2>Open tasks</h2></div><Link href="/tasks">View all →</Link></div>
-          {tasks.length ? <div className="list">{tasks.map((task) => {
+          {tasksResult.error ? <div className="empty" role="alert"><strong>Tasks could not be loaded</strong><p>Reload the page to try again.</p></div> : tasks.length ? <div className="list">{tasks.map((task) => {
             const person = Array.isArray(task.employees) ? task.employees[0] : task.employees;
             return <div className="list-row" key={task.id}><span className="check-circle" /><div><strong>{task.title}</strong><small>{person?.full_name ?? "Whole team"}{task.due_at ? ` · Due ${new Date(task.due_at).toLocaleDateString("en-ZA")}` : ""}</small></div></div>;
           })}</div> : <Empty title="No open tasks" text="Assign responsibilities and they’ll appear here." href="/tasks" link="Create a task" />}

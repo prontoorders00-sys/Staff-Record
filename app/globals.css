@@ -220,3 +220,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .task-inbox { max-width: 900px; }
 .task-card.done { opacity: 1; }
 @media (max-width: 600px) { .task-card-heading { flex-wrap: wrap; } .task-actions .button { min-height: 44px; } }
+
+/* Stacked task forms must not overlap while scrolling. */
+.task-sidebar > .form-panel { position: static; }
